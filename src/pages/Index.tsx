@@ -1,67 +1,37 @@
 import { useState, useCallback } from 'react';
 import { Sparkles, Apple, TrendingUp } from 'lucide-react';
+import { toast } from 'sonner';
 import { ImageUploader } from '../components/ImageUploader';
 import { NutritionResult, type FoodAnalysis } from '../components/NutritionResult';
 import { HistoryCard, type HistoryItem } from '../components/HistoryCard';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
-// 模拟AI分析函数 - 实际项目中替换为真实API
-const analyzeFood = async (): Promise<FoodAnalysis> => {
-  await new Promise(resolve => setTimeout(resolve, 2000));
+// 真实AI分析食物函数
+const analyzeFood = async (imageBase64: string): Promise<FoodAnalysis> => {
+  // 检查 Supabase 是否配置
+  if (!isSupabaseConfigured()) {
+    toast.error('请先启用云服务以使用 AI 分析功能');
+    throw new Error('Supabase not configured');
+  }
 
-  const foods: FoodAnalysis[] = [
-    {
-      name: '番茄炒蛋',
-      calories: 180,
-      protein: 12,
-      carbs: 8,
-      fat: 11,
-      fiber: 2,
-      confidence: 0.94,
-      servingSize: '一份 (约200g)',
-    },
-    {
-      name: '红烧肉',
-      calories: 450,
-      protein: 28,
-      carbs: 6,
-      fat: 35,
-      fiber: 0.5,
-      confidence: 0.91,
-      servingSize: '一份 (约150g)',
-    },
-    {
-      name: '蔬菜沙拉',
-      calories: 120,
-      protein: 3,
-      carbs: 15,
-      fat: 6,
-      fiber: 5,
-      confidence: 0.96,
-      servingSize: '一碗 (约250g)',
-    },
-    {
-      name: '米饭',
-      calories: 230,
-      protein: 4,
-      carbs: 50,
-      fat: 0.5,
-      fiber: 1,
-      confidence: 0.98,
-      servingSize: '一碗 (约200g)',
-    },
-    {
-      name: '烤鸡胸肉',
-      calories: 165,
-      protein: 31,
-      carbs: 0,
-      fat: 3.6,
-      fiber: 0,
-      confidence: 0.93,
-      servingSize: '一份 (约100g)',
-    },
-  ];
+  const { data, error } = await supabase.functions.invoke('analyze-food', {
+    body: { image: imageBase64 }
+  });
 
-  return foods[Math.floor(Math.random() * foods.length)];
+  if (error) {
+    console.error('AI analysis error:', error);
+    throw new Error(error.message || '分析失败');
+  }
+
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+
+  if (!data?.result) {
+    throw new Error('未获取到分析结果');
+  }
+
+  return data.result as FoodAnalysis;
 };
 
 const Index = () => {
@@ -76,8 +46,9 @@ const Index = () => {
     setAnalysis(null);
 
     try {
-      const result = await analyzeFood();
+      const result = await analyzeFood(imagePreview);
       setAnalysis(result);
+      toast.success(`已识别: ${result.name}`);
 
       // 添加到历史记录
       const newItem: HistoryItem = {
@@ -89,6 +60,7 @@ const Index = () => {
       setHistory(prev => [newItem, ...prev]);
     } catch (error) {
       console.error('Analysis failed:', error);
+      toast.error(error instanceof Error ? error.message : '分析失败，请重试');
     } finally {
       setIsAnalyzing(false);
     }
